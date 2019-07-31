@@ -1,4 +1,5 @@
-import { invoke, invokeSync } from '@electron/internal/renderer/ipc-renderer-internal-utils'
+import { ipcRendererInternal } from '@electron/internal/renderer/ipc-renderer-internal'
+import { invokeSync } from '@electron/internal/renderer/ipc-renderer-internal-utils'
 
 window.onload = function () {
   // Use menu API to show context menu.
@@ -32,7 +33,7 @@ const useEditMenuItems = function (x: number, y: number, items: ContextMenuItem[
 
 const createMenu = function (x: number, y: number, items: ContextMenuItem[]) {
   const isEditMenu = useEditMenuItems(x, y, items)
-  invoke<number>('ELECTRON_INSPECTOR_CONTEXT_MENU', items, isEditMenu).then(id => {
+  ipcRendererInternal.invoke<number>('ELECTRON_INSPECTOR_CONTEXT_MENU', items, isEditMenu).then(id => {
     if (typeof id === 'number') {
       window.DevToolsAPI!.contextMenuItemSelected(id)
     }
@@ -41,7 +42,7 @@ const createMenu = function (x: number, y: number, items: ContextMenuItem[]) {
 }
 
 const showFileChooserDialog = function (callback: (blob: File) => void) {
-  invoke<[ string, any ]>('ELECTRON_INSPECTOR_SELECT_FILE').then(([path, data]) => {
+  ipcRendererInternal.invoke<[ string, any ]>('ELECTRON_INSPECTOR_SELECT_FILE').then(([path, data]) => {
     if (path && data) {
       callback(dataToHtml5FileObject(path, data))
     }
