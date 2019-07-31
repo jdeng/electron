@@ -261,6 +261,13 @@ Returns `Boolean` - Whether double click events will be ignored.
 
 Displays a tray balloon.
 
+#### `tray.focus()` _Windows_
+
+Returns focus to the taskbar notification area.
+Notification area icons should use this message when they have completed their UI operation.
+For example, if the icon displays a shortcut menu, but the user presses ESC to cancel it,
+use `tray.focus()` to return focus to the notification area.
+
 #### `tray.popUpContextMenu([menu, position])` _macOS_ _Windows_
 
 * `menu` Menu (optional)

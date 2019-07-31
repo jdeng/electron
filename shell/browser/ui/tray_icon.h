@@ -63,6 +63,9 @@ class TrayIcon {
                               const base::string16& title,
                               const base::string16& contents);
 
+  // Returns focus to the taskbar notification area.
+  virtual void Focus();
+
   // Popups the menu.
   virtual void PopUpContextMenu(const gfx::Point& pos,
                                 AtomMenuModel* menu_model);

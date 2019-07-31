@@ -61,6 +61,7 @@ class NotifyIcon : public TrayIcon {
   void DisplayBalloon(HICON icon,
                       const base::string16& title,
                       const base::string16& contents) override;
+  void Focus();
   void PopUpContextMenu(const gfx::Point& pos,
                         AtomMenuModel* menu_model) override;
   void SetContextMenu(AtomMenuModel* menu_model) override;

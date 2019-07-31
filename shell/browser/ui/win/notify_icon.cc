@@ -138,6 +138,13 @@ void NotifyIcon::DisplayBalloon(HICON icon,
     LOG(WARNING) << "Unable to create status tray balloon.";
 }
 
+void NotifyIcon::Focus() {
+  NOTIFYICONDATA icon_data;
+  InitIconData(&icon_data);
+
+  Shell_NotifyIcon(NIM_SETFOCUS, &icon_data);
+}
+
 void NotifyIcon::PopUpContextMenu(const gfx::Point& pos,
                                   AtomMenuModel* menu_model) {
   // Returns if context menu isn't set.
