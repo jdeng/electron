@@ -14,8 +14,6 @@ TrayIcon::~TrayIcon() {}
 
 void TrayIcon::SetPressedImage(ImageType image) {}
 
-void TrayIcon::SetHighlightMode(TrayIcon::HighlightMode mode) {}
-
 void TrayIcon::DisplayBalloon(const BalloonOptions& options) {}
 
 void TrayIcon::PopUpContextMenu(const gfx::Point& pos,
