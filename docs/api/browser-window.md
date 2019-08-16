@@ -1194,6 +1194,14 @@ can not be focused on.
 
 Returns `Boolean` - Whether the window is always on top of other windows.
 
+#### `win.moveAbove(mediaSourceId)`
+
+* `mediaSourceId` String - Window id in the format of DesktopCapturerSource's id. For example "window:1869:0".
+
+Moves window above the source window in the sense of z-order. If the
+`mediaSourceId` is not of type window or if the window does not exist then
+this method throws an error.
+
 #### `win.moveTop()`
 
 Moves window to top(z-order) regardless of focus
@@ -1265,6 +1273,15 @@ Enters or leaves the kiosk mode.
 #### `win.isKiosk()`
 
 Returns `Boolean` - Whether the window is in kiosk mode.
+
+#### `win.getMediaSourceId()`
+
+Returns `String` - Window id in the format of DesktopCapturerSource's id. For example "window:1234:0".
+
+More precisely the format is `window:id:other_id` where `id` is `HWND` on
+Windows, `CGWindowID` (`uint64_t`) on macOS and `Window` (`unsigned long`) on
+Linux. `other_id` is used to identify web contents (tabs) so within the same
+top level window.
 
 #### `win.getNativeWindowHandle()`
 
@@ -1437,19 +1454,15 @@ screen readers
 Sets a 16 x 16 pixel overlay onto the current taskbar icon, usually used to
 convey some sort of application status or to passively notify the user.
 
-#### `win.setHasShadow(hasShadow)` _macOS_
+#### `win.setHasShadow(hasShadow)`
 
 * `hasShadow` Boolean
 
-Sets whether the window should have a shadow. On Windows and Linux does
-nothing.
+Sets whether the window should have a shadow.
 
-#### `win.hasShadow()` _macOS_
+#### `win.hasShadow()`
 
 Returns `Boolean` - Whether the window has a shadow.
-
-On Windows and Linux always returns
-`true`.
 
 #### `win.setOpacity(opacity)` _Windows_ _macOS_
 

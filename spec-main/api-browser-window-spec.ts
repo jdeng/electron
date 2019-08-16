@@ -653,6 +653,48 @@ describe('BrowserWindow module', () => {
       })
     })
 
+    describe('BrowserWindow.moveAbove(mediaSourceId)', () => {
+      it('should throw an exception if wrong formatting', async () => {
+        const fakeSourceIds = [
+          'none', 'screen:0', 'window:fake', 'window:1234', 'foobar:1:2'
+        ]
+        fakeSourceIds.forEach((sourceId) => {
+          expect(() => {
+            w.moveAbove(sourceId)
+          }).to.throw(/Invalid media source id/)
+        })
+      })
+      it('should throw an exception if wrong type', async () => {
+        const fakeSourceIds = [null as any, 123 as any]
+        fakeSourceIds.forEach((sourceId) => {
+          expect(() => {
+            w.moveAbove(sourceId)
+          }).to.throw(/Error processing argument at index 0 */)
+        })
+      })
+      it('should throw an exception if invalid window', async () => {
+        // It is very unlikely that these window id exist.
+        const fakeSourceIds = ['window:99999999:0', 'window:123456:1',
+          'window:123456:9']
+        fakeSourceIds.forEach((sourceId) => {
+          expect(() => {
+            w.moveAbove(sourceId)
+          }).to.throw(/Invalid media source id/)
+        })
+      })
+      it('should not throw an exception', async () => {
+        const w2 = new BrowserWindow({ show: false, title: 'window2' })
+        const w2Shown = emittedOnce(w2, 'show')
+        w2.show()
+        await w2Shown
+
+        expect(() => {
+          w.moveAbove(w2.getMediaSourceId())
+        }).to.not.throw()
+
+        await closeWindow(w2, { assertNotWindows: false })
+      })
+    })
   })
 
   describe('sizing', () => {
@@ -3338,22 +3380,42 @@ describe('BrowserWindow module', () => {
     })
 
     describe('hasShadow state', () => {
-      // On Windows there is no shadow by default and it can not be changed
-      // dynamically.
+      it('returns a boolean on all platforms', () => {
+        const w = new BrowserWindow({ show: false })
+        const hasShadow = w.hasShadow()
+        expect(hasShadow).to.be.a('boolean')
+      })
+
+      // On Windows there's no shadow by default & it can't be changed dynamically.
       it('can be changed with hasShadow option', () => {
         const hasShadow = process.platform !== 'darwin'
-        const w = new BrowserWindow({ show: false, hasShadow: hasShadow })
+        const w = new BrowserWindow({ show: false, hasShadow })
         expect(w.hasShadow()).to.equal(hasShadow)
       })
 
-      ifit(process.platform === 'darwin')('can be changed with setHasShadow method', () => {
+      it('can be changed with setHasShadow method', () => {
         const w = new BrowserWindow({ show: false })
-        expect(w.hasShadow()).to.be.true('hasShadow')
         w.setHasShadow(false)
         expect(w.hasShadow()).to.be.false('hasShadow')
         w.setHasShadow(true)
         expect(w.hasShadow()).to.be.true('hasShadow')
+        w.setHasShadow(false)
+        expect(w.hasShadow()).to.be.false('hasShadow')
       })
+    })
+  })
+
+  describe('window.getMediaSourceId()', () => {
+    afterEach(closeAllWindows)
+    it('returns valid source id', async () => {
+      const w = new BrowserWindow({show: false})
+      const shown = emittedOnce(w, 'show')
+      w.show()
+      await shown
+
+      // Check format 'window:1234:0'.
+      const sourceId = w.getMediaSourceId()
+      expect(sourceId).to.match(/^window:\d+:\d+$/)
     })
   })
 
