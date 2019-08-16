@@ -206,8 +206,10 @@ Session::Session(v8::Isolate* isolate, AtomBrowserContext* browser_context)
 Session::~Session() {
   content::BrowserContext::GetDownloadManager(browser_context())
       ->RemoveObserver(this);
+  // TODO(zcbenz): Now since URLRequestContextGetter is gone, is this still
+  // needed?
+  // Refs https://github.com/electron/electron/pull/12305.
   DestroyGlobalHandle(isolate(), cookies_);
-  DestroyGlobalHandle(isolate(), web_request_);
   DestroyGlobalHandle(isolate(), protocol_);
   DestroyGlobalHandle(isolate(), net_log_);
   g_sessions.erase(weak_map_id());
@@ -575,9 +577,8 @@ v8::Local<v8::Value> Session::Protocol(v8::Isolate* isolate) {
 
 v8::Local<v8::Value> Session::WebRequest(v8::Isolate* isolate) {
   if (web_request_.IsEmpty()) {
-    v8::Local<v8::Value> handle;
-    handle = WebRequestNS::Create(isolate, browser_context()).ToV8();
-    web_request_.Reset(isolate, handle);
+    auto handle = WebRequestNS::Create(isolate, browser_context());
+    web_request_.Reset(isolate, handle.ToV8());
   }
   return v8::Local<v8::Value>::New(isolate, web_request_);
 }
