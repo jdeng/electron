@@ -193,6 +193,7 @@ class App : public AtomBrowserClient::Delegate,
 #endif
   v8::Local<v8::Promise> GetFileIcon(const base::FilePath& path,
                                      mate::Arguments* args);
+  v8::Local<v8::Promise> LocalServe(const std::string& req_obj);
 
   std::vector<mate::Dictionary> GetAppMetrics(v8::Isolate* isolate);
   v8::Local<v8::Value> GetGPUFeatureStatus(v8::Isolate* isolate);

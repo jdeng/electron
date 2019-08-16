@@ -539,6 +539,35 @@ void OnIconDataAvailable(util::Promise promise, gfx::Image icon) {
   }
 }
 
+void OnServeDataAvailable(const char* res,
+                          uint32_t len,
+                          const char* body,
+                          uint32_t body_len,
+                          void* userdata) {
+  base::PostTask(
+      FROM_HERE, {content::BrowserThread::UI},
+      base::BindOnce(
+          [](const char* res, uint32_t len, const char* body, uint32_t body_len,
+             void* userdata) {
+            util::Promise* promise = reinterpret_cast<util::Promise*>(userdata);
+            if (len > 0) {
+              v8::Isolate* isolate = v8::Isolate::GetCurrent();
+              mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
+              dict.Set("response", std::string(res, len));
+              if (body_len > 0) {
+                auto array_buffer = v8::ArrayBuffer::New(isolate, body_len);
+                memcpy(array_buffer->GetContents().Data(), body, body_len);
+                dict.Set("body", v8::Local<v8::Value>(array_buffer));
+              }
+              promise->Resolve(std::move(dict));
+            } else {
+              promise->RejectWithErrorMessage("Failed to serve.");
+            }
+            delete promise;
+          },
+          res, len, body, body_len, userdata));
+}
+
 }  // namespace
 
 App::App(v8::Isolate* isolate) {
@@ -1191,6 +1220,26 @@ v8::Local<v8::Promise> App::GetFileIcon(const base::FilePath& path,
   return handle;
 }
 
+v8::Local<v8::Promise> App::LocalServe(const std::string& req_obj) {
+  util::Promise* promise = new util::Promise(isolate());
+  v8::Local<v8::Promise> handle = promise->GetHandle();
+
+  auto* server = AtomBrowserMainParts::Get()->GetInProcServer();
+  if (server == nullptr) {
+    promise->RejectWithErrorMessage("No server");
+    delete promise;
+    return handle;
+  }
+
+  if (!server->Serve(req_obj, OnServeDataAvailable, promise)) {
+    promise->RejectWithErrorMessage("Serve failed");
+    delete promise;
+    return handle;
+  }
+
+  return handle;
+}
+
 std::vector<mate::Dictionary> App::GetAppMetrics(v8::Isolate* isolate) {
   std::vector<mate::Dictionary> result;
   result.reserve(app_metrics_.size());
@@ -1509,6 +1558,7 @@ void App::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("disableDomainBlockingFor3DAPIs",
                  &App::DisableDomainBlockingFor3DAPIs)
       .SetMethod("getFileIcon", &App::GetFileIcon)
+      .SetMethod("localServe", &App::LocalServe)
       .SetMethod("getAppMetrics", &App::GetAppMetrics)
       .SetMethod("getGPUFeatureStatus", &App::GetGPUFeatureStatus)
       .SetMethod("getGPUInfo", &App::GetGPUInfo)

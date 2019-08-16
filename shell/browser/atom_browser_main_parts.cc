@@ -110,6 +110,8 @@ void Erase(T* container, typename T::iterator iter) {
   container->erase(iter);
 }
 
+const char kInProcServer[] = "inproc-server";
+
 #if defined(OS_WIN)
 // gfx::Font callbacks
 void AdjustUIFont(gfx::win::FontAdjustment* font_adjustment) {
@@ -287,6 +289,27 @@ void AtomBrowserMainParts::PostEarlyInitialization() {
   // set.  If this check is failing we may need to re-add that workaround
   DCHECK(base::ThreadTaskRunnerHandle::IsSet());
 
+  // --inproc-server
+  auto* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(electron::kInProcServer)) {
+    auto libpath = command_line->GetSwitchValuePath(electron::kInProcServer);
+    if (!libpath.empty()) {
+      base::NativeLibraryLoadError error;
+      base::NativeLibrary server_lib = base::LoadNativeLibrary(libpath, &error);
+      if (server_lib != nullptr) {
+        std::unique_ptr<InProcServer> server{new InProcServer()};
+        if (server->Init(server_lib)) {
+          this->inproc_server_ = std::move(server);
+        } else {
+          LOG(ERROR) << "in proc server " << libpath << " invalid";
+          base::UnloadNativeLibrary(server_lib);
+        }
+      } else {
+        LOG(ERROR) << "in proc server " << libpath << " not found";
+      }
+    }
+  }
+
   // The ProxyResolverV8 has setup a complete V8 environment, in order to
   // avoid conflicts we only initialize our V8 environment after that.
   js_env_.reset(new JavascriptEnvironment(node_bindings_->uv_loop()));
@@ -384,6 +407,11 @@ int AtomBrowserMainParts::PreCreateThreads() {
 }
 
 void AtomBrowserMainParts::PostDestroyThreads() {
+  if (this->inproc_server_.get() != nullptr) {
+    this->inproc_server_->Free();
+    this->inproc_server_.reset();
+  }
+
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   extensions_browser_client_.reset();
   extensions::ExtensionsBrowserClient::Set(nullptr);
@@ -563,6 +591,70 @@ IconManager* AtomBrowserMainParts::GetIconManager() {
   if (!icon_manager_.get())
     icon_manager_.reset(new IconManager);
   return icon_manager_.get();
+}
+
+InProcServer::InProcServer() {}
+
+InProcServer::~InProcServer() {
+  this->Free();
+}
+
+bool InProcServer::Init(base::NativeLibrary server_lib) {
+  if (server_lib == nullptr) {
+    return false;
+  }
+
+  InitFunc initf =
+      (InitFunc)base::GetFunctionPointerFromNativeLibrary(server_lib, "Init");
+  FreeFunc freef =
+      (FreeFunc)base::GetFunctionPointerFromNativeLibrary(server_lib, "Free");
+  ServeFunc fetchf =
+      (ServeFunc)base::GetFunctionPointerFromNativeLibrary(server_lib, "Serve");
+  if (initf == nullptr || freef == nullptr || fetchf == nullptr) {
+    return false;
+  }
+
+  int ret = initf();
+  if (ret < 0) {
+    return false;
+  }
+
+  this->free_ = freef;
+  this->serve_ = fetchf;
+  this->lib_ = server_lib;
+  return true;
+}
+
+void InProcServer::Free() {
+  if (this->free_ == nullptr) {
+    return;
+  }
+
+  this->free_();
+  this->free_ = nullptr;
+  base::UnloadNativeLibrary(this->lib_);
+  this->lib_ = nullptr;
+}
+
+bool InProcServer::Serve(const std::string& req_obj,
+                         InProcServer::CallbackFunc cb,
+                         void* userdata) {
+  if (this->serve_ == nullptr) {
+    return false;
+  }
+
+  int ret =
+      this->serve_(req_obj.c_str(), uint32_t(req_obj.length()), cb, userdata);
+  if (ret < 0) {
+    return false;
+  }
+
+  return true;
+}
+
+InProcServer* AtomBrowserMainParts::GetInProcServer() {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  return inproc_server_.get();
 }
 
 }  // namespace electron

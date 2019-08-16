@@ -11,6 +11,7 @@
 
 #include "base/callback.h"
 #include "base/metrics/field_trial.h"
+#include "base/native_library.h"
 #include "base/timer/timer.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_main_parts.h"
@@ -29,6 +30,33 @@ class WMState;
 #endif
 
 namespace electron {
+
+class InProcServer {
+ public:
+  typedef void (*CallbackFunc)(const char* res_obj,
+                               uint32_t res_len,
+                               const char* body,
+                               uint32_t body_len,
+                               void* userdata);
+  typedef int (*ServeFunc)(const char* req_obj,
+                           uint32_t req_len,
+                           CallbackFunc cb,
+                           void* userdata);
+  typedef int (*InitFunc)(void);
+  typedef void (*FreeFunc)(void);
+
+ public:
+  InProcServer();
+  ~InProcServer();
+  bool Init(base::NativeLibrary server_lib);
+  bool Serve(const std::string& req_obj, CallbackFunc cb, void* userdata);
+  void Free();
+
+ private:
+  base::NativeLibrary lib_ = nullptr;
+  ServeFunc serve_ = nullptr;
+  FreeFunc free_ = nullptr;
+};
 
 class AtomBrowserContext;
 class Browser;
@@ -76,6 +104,9 @@ class AtomBrowserMainParts : public content::BrowserMainParts {
 
   // Returns handle to the class responsible for extracting file icons.
   IconManager* GetIconManager();
+
+  // Returns handle to the class responsible for fetching data
+  InProcServer* GetInProcServer();
 
   Browser* browser() { return browser_.get(); }
   BrowserProcessImpl* browser_process() { return fake_browser_process_.get(); }
@@ -134,6 +165,8 @@ class AtomBrowserMainParts : public content::BrowserMainParts {
   std::unique_ptr<NodeDebugger> node_debugger_;
   std::unique_ptr<IconManager> icon_manager_;
   std::unique_ptr<base::FieldTrialList> field_trial_list_;
+
+  std::unique_ptr<InProcServer> inproc_server_;
 
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   std::unique_ptr<AtomExtensionsClient> extensions_client_;
