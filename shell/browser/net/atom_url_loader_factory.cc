@@ -313,9 +313,11 @@ void AtomURLLoaderFactory::StartLoadingBuffer(
   std::string data;
   if (buffer->IsArrayBuffer()) {
     auto ab = v8::Local<v8::ArrayBuffer>::Cast(buffer);
-    data = std::string(reinterpret_cast<const char *>(ab->GetContents().Data()), ab->GetContents().ByteLength()));
+    data = std::string(reinterpret_cast<const char*>(ab->GetContents().Data()),
+                       ab->GetContents().ByteLength());
   } else {
-    data = std::string(node::Buffer::Data(buffer), node::Buffer::Length(buffer)));
+    data =
+        std::string(node::Buffer::Data(buffer), node::Buffer::Length(buffer));
   }
 
   SendContents(std::move(client), std::move(head), std::move(data));
