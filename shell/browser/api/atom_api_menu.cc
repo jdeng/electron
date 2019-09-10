@@ -6,15 +6,18 @@
 
 #include <map>
 
+#include "gin/dictionary.h"
 #include "native_mate/constructor.h"
-#include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
 #include "shell/browser/native_window.h"
+#include "shell/common/gin_converters/callback_converter.h"
 #include "shell/common/native_mate_converters/accelerator_converter.h"
-#include "shell/common/native_mate_converters/callback.h"
 #include "shell/common/native_mate_converters/image_converter.h"
 #include "shell/common/native_mate_converters/string16_converter.h"
 #include "shell/common/node_includes.h"
+
+// TODO(zcbenz): Remove this after removing mate::ObjectTemplateBuilder.
+#include "shell/common/native_mate_converters/callback_converter_deprecated.h"
 
 namespace {
 // We need this map to keep references to currently opened menus.
@@ -40,8 +43,8 @@ Menu::~Menu() {
 }
 
 void Menu::AfterInit(v8::Isolate* isolate) {
-  mate::Dictionary wrappable(isolate, GetWrapper());
-  mate::Dictionary delegate;
+  gin::Dictionary wrappable(isolate, GetWrapper());
+  gin::Dictionary delegate(nullptr);
   if (!wrappable.Get("delegate", &delegate))
     return;
 
@@ -222,8 +225,8 @@ void Menu::OnMenuWillShow() {
 void Menu::BuildPrototype(v8::Isolate* isolate,
                           v8::Local<v8::FunctionTemplate> prototype) {
   prototype->SetClassName(mate::StringToV8(isolate, "Menu"));
+  gin_helper::Destroyable::MakeDestroyable(isolate, prototype);
   mate::ObjectTemplateBuilder(isolate, prototype->PrototypeTemplate())
-      .MakeDestroyable()
       .SetMethod("insertItem", &Menu::InsertItemAt)
       .SetMethod("insertCheckItem", &Menu::InsertCheckItemAt)
       .SetMethod("insertRadioItem", &Menu::InsertRadioItemAt)

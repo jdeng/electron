@@ -12,6 +12,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/values.h"
+#include "gin/converter.h"
 #include "gin/dictionary.h"
 #include "net/base/upload_bytes_element_reader.h"
 #include "net/base/upload_data_stream.h"
@@ -21,9 +22,9 @@
 #include "net/cert/x509_util.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/resource_request.h"
+#include "shell/browser/api/atom_api_data_pipe_holder.h"
 #include "shell/common/gin_converters/gurl_converter.h"
 #include "shell/common/gin_converters/std_converter.h"
-#include "shell/common/gin_converters/string16_converter.h"
 #include "shell/common/gin_converters/value_converter_gin_adapter.h"
 #include "shell/common/node_includes.h"
 
@@ -160,15 +161,10 @@ v8::Local<v8::Value> Converter<net::HttpResponseHeaders*>::ToV8(
     std::string value;
     while (headers->EnumerateHeaderLines(&iter, &key, &value)) {
       key = base::ToLowerASCII(key);
-      if (response_headers.FindKey(key)) {
-        base::ListValue* values = nullptr;
-        if (response_headers.GetList(key, &values))
-          values->AppendString(value);
-      } else {
-        auto values = std::make_unique<base::ListValue>();
-        values->AppendString(value);
-        response_headers.Set(key, std::move(values));
-      }
+      base::Value* values = response_headers.FindListKey(key);
+      if (!values)
+        values = response_headers.SetKey(key, base::ListValue());
+      values->GetList().emplace_back(value);
     }
   }
   return ConvertToV8(isolate, response_headers);
@@ -252,6 +248,44 @@ bool Converter<net::HttpRequestHeaders>::FromV8(v8::Isolate* isolate,
 }
 
 // static
+v8::Local<v8::Value> Converter<network::ResourceRequestBody>::ToV8(
+    v8::Isolate* isolate,
+    const network::ResourceRequestBody& val) {
+  const auto& elements = *val.elements();
+  v8::Local<v8::Array> arr = v8::Array::New(isolate, elements.size());
+  for (size_t i = 0; i < elements.size(); ++i) {
+    const auto& element = elements[i];
+    gin::Dictionary upload_data(isolate, v8::Object::New(isolate));
+    switch (element.type()) {
+      case network::mojom::DataElementType::kFile:
+        upload_data.Set("file", element.path().value());
+        break;
+      case network::mojom::DataElementType::kBytes:
+        upload_data.Set("bytes", node::Buffer::Copy(isolate, element.bytes(),
+                                                    element.length())
+                                     .ToLocalChecked());
+        break;
+      case network::mojom::DataElementType::kDataPipe: {
+        // TODO(zcbenz): After the NetworkService refactor, the old blobUUID API
+        // becomes unecessarily complex, we should deprecate the getBlobData API
+        // and return the DataPipeHolder wrapper directly.
+        auto holder = electron::api::DataPipeHolder::Create(isolate, element);
+        upload_data.Set("blobUUID", holder->id());
+        // The lifetime of data pipe is bound to the uploadData object.
+        upload_data.Set("dataPipe", holder);
+        break;
+      }
+      default:
+        NOTREACHED() << "Found unsupported data element";
+    }
+    arr->Set(isolate->GetCurrentContext(), static_cast<uint32_t>(i),
+             ConvertToV8(isolate, upload_data))
+        .Check();
+  }
+  return arr;
+}
+
+// static
 v8::Local<v8::Value> Converter<network::ResourceRequest>::ToV8(
     v8::Isolate* isolate,
     const network::ResourceRequest& val) {
@@ -260,33 +294,8 @@ v8::Local<v8::Value> Converter<network::ResourceRequest>::ToV8(
   dict.Set("url", val.url.spec());
   dict.Set("referrer", val.referrer.spec());
   dict.Set("headers", val.headers);
-  if (val.request_body) {
-    const auto& elements = *val.request_body->elements();
-    v8::Local<v8::Array> arr = v8::Array::New(isolate, elements.size());
-    for (size_t i = 0; i < elements.size(); ++i) {
-      const auto& element = elements[i];
-      gin::Dictionary upload_data(isolate, v8::Object::New(isolate));
-      switch (element.type()) {
-        case network::mojom::DataElementType::kFile:
-          upload_data.Set("file", element.path().value());
-          break;
-        case network::mojom::DataElementType::kBytes:
-          upload_data.Set("bytes", node::Buffer::Copy(isolate, element.bytes(),
-                                                      element.length())
-                                       .ToLocalChecked());
-          break;
-        case network::mojom::DataElementType::kBlob:
-          upload_data.Set("blobUUID", element.blob_uuid());
-          break;
-        default:
-          NOTREACHED() << "Found unsupported data element";
-      }
-      arr->Set(isolate->GetCurrentContext(), static_cast<uint32_t>(i),
-               ConvertToV8(isolate, upload_data))
-          .Check();
-    }
-    dict.Set("uploadData", arr);
-  }
+  if (val.request_body)
+    dict.Set("uploadData", ConvertToV8(isolate, *val.request_body));
   return ConvertToV8(isolate, dict);
 }
 

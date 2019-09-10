@@ -13,12 +13,9 @@
 #include "content/public/renderer/render_frame_visitor.h"
 #include "content/public/renderer/render_view.h"
 #include "native_mate/dictionary.h"
-#include "native_mate/object_template_builder.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "shell/common/api/api.mojom.h"
-#include "shell/common/api/event_emitter_caller.h"
 #include "shell/common/native_mate_converters/blink_converter.h"
-#include "shell/common/native_mate_converters/callback.h"
 #include "shell/common/native_mate_converters/gfx_converter.h"
 #include "shell/common/native_mate_converters/string16_converter.h"
 #include "shell/common/node_includes.h"
@@ -113,7 +110,8 @@ class RenderFrameStatus : public content::RenderFrameObserver {
 
 class ScriptExecutionCallback : public blink::WebScriptExecutionCallback {
  public:
-  explicit ScriptExecutionCallback(electron::util::Promise promise)
+  explicit ScriptExecutionCallback(
+      electron::util::Promise<v8::Local<v8::Value>> promise)
       : promise_(std::move(promise)) {}
   ~ScriptExecutionCallback() override {}
 
@@ -137,7 +135,7 @@ class ScriptExecutionCallback : public blink::WebScriptExecutionCallback {
   }
 
  private:
-  electron::util::Promise promise_;
+  electron::util::Promise<v8::Local<v8::Value>> promise_;
 
   DISALLOW_COPY_AND_ASSIGN(ScriptExecutionCallback);
 };
@@ -376,7 +374,7 @@ v8::Local<v8::Promise> ExecuteJavaScript(mate::Arguments* args,
                                          v8::Local<v8::Value> window,
                                          const base::string16& code) {
   v8::Isolate* isolate = args->isolate();
-  util::Promise promise(isolate);
+  util::Promise<v8::Local<v8::Value>> promise(isolate);
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   bool has_user_gesture = false;
@@ -395,7 +393,7 @@ v8::Local<v8::Promise> ExecuteJavaScriptInIsolatedWorld(
     int world_id,
     const std::vector<mate::Dictionary>& scripts) {
   v8::Isolate* isolate = args->isolate();
-  util::Promise promise(isolate);
+  util::Promise<v8::Local<v8::Value>> promise(isolate);
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   std::vector<blink::WebScriptSource> sources;

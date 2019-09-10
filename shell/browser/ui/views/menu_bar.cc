@@ -150,11 +150,13 @@ bool MenuBar::AcceleratorPressed(const ui::Accelerator& accelerator) {
       return true;
     case ui::VKEY_HOME:
       GetFocusManager()->SetFocusedViewWithReason(
-          GetFirstFocusableChild(), views::FocusManager::kReasonFocusTraversal);
+          GetFirstFocusableChild(),
+          views::FocusManager::FocusChangeReason::kFocusTraversal);
       return true;
     case ui::VKEY_END:
       GetFocusManager()->SetFocusedViewWithReason(
-          GetLastFocusableChild(), views::FocusManager::kReasonFocusTraversal);
+          GetLastFocusableChild(),
+          views::FocusManager::FocusChangeReason::kFocusTraversal);
       return true;
     default: {
       auto children = GetChildrenInZOrder();
@@ -267,12 +269,6 @@ void MenuBar::OnMenuButtonClicked(views::Button* source,
 
   if (!window_->HasFocus())
     window_->RequestFocus();
-
-  // This ensures that if you focus the menubar by clicking on an item, you can
-  // still use the arrow keys to move around
-  if (GetPaneFocusTraversable() == nullptr) {
-    SetPaneFocus(source);
-  }
 
   int id = source->tag();
   AtomMenuModel::ItemType type = menu_model_->GetTypeAt(id);

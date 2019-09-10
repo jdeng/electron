@@ -12,7 +12,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "electron/shell/common/api/api.mojom.h"
 #include "native_mate/wrappable.h"
-#include "shell/common/api/event_emitter_caller.h"
+#include "shell/common/api/event_emitter_caller_deprecated.h"
 
 namespace content {
 class RenderFrameHost;
@@ -85,6 +85,7 @@ class EventEmitter : public Wrappable<T> {
       base::Optional<electron::mojom::ElectronBrowser::MessageSyncCallback>
           callback,
       Args&&... args) {
+    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     v8::Locker locker(isolate());
     v8::HandleScope handle_scope(isolate());
     v8::Local<v8::Object> wrapper = GetWrapper();

@@ -11,7 +11,7 @@ ObjectTemplateBuilder::ObjectTemplateBuilder(
     v8::Local<v8::ObjectTemplate> templ)
     : isolate_(isolate), template_(templ) {}
 
-ObjectTemplateBuilder::~ObjectTemplateBuilder() {}
+ObjectTemplateBuilder::~ObjectTemplateBuilder() = default;
 
 ObjectTemplateBuilder& ObjectTemplateBuilder::SetImpl(base::StringPiece name,
                                                       v8::Local<v8::Data> val) {
@@ -25,12 +25,6 @@ ObjectTemplateBuilder& ObjectTemplateBuilder::SetPropertyImpl(
     v8::Local<v8::FunctionTemplate> setter) {
   template_->SetAccessorProperty(StringToSymbol(isolate_, name), getter,
                                  setter);
-  return *this;
-}
-
-ObjectTemplateBuilder& ObjectTemplateBuilder::MakeDestroyable() {
-  SetMethod("destroy", base::Bind(internal::Destroyable::Destroy));
-  SetMethod("isDestroyed", base::Bind(internal::Destroyable::IsDestroyed));
   return *this;
 }
 

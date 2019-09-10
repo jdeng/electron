@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-#include "base/message_loop/message_loop.h"
+#include "base/message_loop/message_loop_current.h"
 #include "base/no_destructor.h"
 #include "base/optional.h"
 #include "base/strings/utf_string_conversions.h"
@@ -69,7 +69,6 @@
 #include "shell/browser/web_contents_zoom_controller.h"
 #include "shell/browser/web_view_guest_delegate.h"
 #include "shell/common/api/atom_api_native_image.h"
-#include "shell/common/api/event_emitter_caller.h"
 #include "shell/common/color_util.h"
 #include "shell/common/mouse_util.h"
 #include "shell/common/native_mate_converters/blink_converter.h"
@@ -100,6 +99,12 @@
 
 #if !defined(OS_MACOSX)
 #include "ui/aura/window.h"
+#else
+#include "ui/base/cocoa/defaults_utils.h"
+#endif
+
+#if defined(OS_LINUX)
+#include "ui/views/linux_ui/linux_ui.h"
 #endif
 
 #if defined(OS_LINUX) || defined(OS_WIN)
@@ -302,7 +307,8 @@ namespace api {
 namespace {
 
 // Called when CapturePage is done.
-void OnCapturePageDone(util::Promise promise, const SkBitmap& bitmap) {
+void OnCapturePageDone(util::Promise<gfx::Image> promise,
+                       const SkBitmap& bitmap) {
   // Hack to enable transparency in captured image
   promise.Resolve(gfx::Image::CreateFrom1xBitmap(bitmap));
 }
@@ -359,6 +365,9 @@ WebContents::WebContents(v8::Isolate* isolate, const mate::Dictionary& options)
   // Whether to enable DevTools.
   options.Get("devTools", &enable_devtools_);
 
+  bool initially_shown = true;
+  options.Get(options::kShow, &initially_shown);
+
   // Obtain the session.
   std::string partition;
   mate::Handle<api::Session> session;
@@ -413,6 +422,7 @@ WebContents::WebContents(v8::Isolate* isolate, const mate::Dictionary& options)
 #endif
   } else {
     content::WebContents::CreateParams params(session->browser_context());
+    params.initially_hidden = !initially_shown;
     web_contents = content::WebContents::Create(params);
   }
 
@@ -455,6 +465,25 @@ void WebContents::InitWithSessionAndOptions(
   prefs->use_autohinter = params->autohinter;
   prefs->use_bitmaps = params->use_bitmaps;
   prefs->subpixel_rendering = params->subpixel_rendering;
+#endif
+
+// Honor the system's cursor blink rate settings
+#if defined(OS_MACOSX)
+  base::TimeDelta interval;
+  if (ui::TextInsertionCaretBlinkPeriod(&interval))
+    prefs->caret_blink_interval = interval;
+#elif defined(OS_LINUX)
+  views::LinuxUI* linux_ui = views::LinuxUI::instance();
+  if (linux_ui)
+    prefs->caret_blink_interval = linux_ui->GetCursorBlinkInterval();
+#elif defined(OS_WIN)
+  const auto system_msec = ::GetCaretBlinkTime();
+  if (system_msec != 0) {
+    prefs->caret_blink_interval =
+        (system_msec == INFINITE)
+            ? base::TimeDelta()
+            : base::TimeDelta::FromMilliseconds(system_msec);
+  }
 #endif
 
   // Save the preferences in C++.
@@ -975,12 +1004,13 @@ void WebContents::Message(bool internal,
                  internal, channel, std::move(arguments));
 }
 
-void WebContents::Invoke(const std::string& channel,
+void WebContents::Invoke(bool internal,
+                         const std::string& channel,
                          base::Value arguments,
                          InvokeCallback callback) {
-  // webContents.emit('-ipc-invoke', new Event(), channel, arguments);
+  // webContents.emit('-ipc-invoke', new Event(), internal, channel, arguments);
   EmitWithSender("-ipc-invoke", bindings_.dispatch_context(),
-                 std::move(callback), channel, std::move(arguments));
+                 std::move(callback), internal, channel, std::move(arguments));
 }
 
 void WebContents::MessageSync(bool internal,
@@ -1417,7 +1447,7 @@ std::string WebContents::GetUserAgent() {
 v8::Local<v8::Promise> WebContents::SavePage(
     const base::FilePath& full_file_path,
     const content::SavePageType& save_type) {
-  util::Promise promise(isolate());
+  util::Promise<void*> promise(isolate());
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   auto* handler = new SavePageHandler(web_contents(), std::move(promise));
@@ -1672,6 +1702,8 @@ void WebContents::Print(mate::Arguments* args) {
 
     settings.SetString(printing::kSettingHeaderFooterTitle, header);
     settings.SetString(printing::kSettingHeaderFooterURL, footer);
+  } else {
+    settings.SetBoolean(printing::kSettingHeaderFooterEnabled, false);
   }
 
   // We don't want to allow the user to enable these settings
@@ -1749,7 +1781,7 @@ std::vector<printing::PrinterBasicInfo> WebContents::GetPrinterList() {
 
 v8::Local<v8::Promise> WebContents::PrintToPDF(
     const base::DictionaryValue& settings) {
-  util::Promise promise(isolate());
+  util::Promise<v8::Local<v8::Value>> promise(isolate());
   v8::Local<v8::Promise> handle = promise.GetHandle();
   PrintPreviewMessageHandler::FromWebContents(web_contents())
       ->PrintToPDF(settings, std::move(promise));
@@ -2052,7 +2084,7 @@ void WebContents::StartDrag(const mate::Dictionary& item,
 
 v8::Local<v8::Promise> WebContents::CapturePage(mate::Arguments* args) {
   gfx::Rect rect;
-  util::Promise promise(isolate());
+  util::Promise<gfx::Image> promise(isolate());
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   // get rect arguments if they exist
@@ -2231,16 +2263,6 @@ v8::Local<v8::Value> WebContents::GetLastWebPreferences(
   return mate::ConvertToV8(isolate, *web_preferences->last_preference());
 }
 
-bool WebContents::IsRemoteModuleEnabled() const {
-  if (web_contents()->GetVisibleURL().SchemeIs("devtools")) {
-    return false;
-  }
-  if (auto* web_preferences = WebContentsPreferences::From(web_contents())) {
-    return web_preferences->IsRemoteModuleEnabled();
-  }
-  return true;
-}
-
 v8::Local<v8::Value> WebContents::GetOwnerBrowserWindow() const {
   if (owner_window())
     return BrowserWindow::From(isolate(), owner_window());
@@ -2319,7 +2341,7 @@ void WebContents::GrantOriginAccess(const GURL& url) {
 
 v8::Local<v8::Promise> WebContents::TakeHeapSnapshot(
     const base::FilePath& file_path) {
-  util::Promise promise(isolate());
+  util::Promise<void*> promise(isolate());
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   base::ThreadRestrictions::ScopedAllowIO allow_io;
@@ -2346,8 +2368,8 @@ v8::Local<v8::Promise> WebContents::TakeHeapSnapshot(
   (*raw_ptr)->TakeHeapSnapshot(
       mojo::WrapPlatformFile(file.TakePlatformFile()),
       base::BindOnce(
-          [](mojom::ElectronRendererAssociatedPtr* ep, util::Promise promise,
-             bool success) {
+          [](mojom::ElectronRendererAssociatedPtr* ep,
+             util::Promise<void*> promise, bool success) {
             if (success) {
               promise.Resolve();
             } else {
@@ -2362,8 +2384,8 @@ v8::Local<v8::Promise> WebContents::TakeHeapSnapshot(
 void WebContents::BuildPrototype(v8::Isolate* isolate,
                                  v8::Local<v8::FunctionTemplate> prototype) {
   prototype->SetClassName(mate::StringToV8(isolate, "WebContents"));
+  gin_helper::Destroyable::MakeDestroyable(isolate, prototype);
   mate::ObjectTemplateBuilder(isolate, prototype->PrototypeTemplate())
-      .MakeDestroyable()
       .SetMethod("setBackgroundThrottling",
                  &WebContents::SetBackgroundThrottling)
       .SetMethod("getProcessId", &WebContents::GetProcessID)
@@ -2449,7 +2471,6 @@ void WebContents::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("_getPreloadPaths", &WebContents::GetPreloadPaths)
       .SetMethod("getWebPreferences", &WebContents::GetWebPreferences)
       .SetMethod("getLastWebPreferences", &WebContents::GetLastWebPreferences)
-      .SetMethod("_isRemoteModuleEnabled", &WebContents::IsRemoteModuleEnabled)
       .SetMethod("getOwnerBrowserWindow", &WebContents::GetOwnerBrowserWindow)
       .SetMethod("inspectServiceWorker", &WebContents::InspectServiceWorker)
       .SetMethod("inspectSharedWorker", &WebContents::InspectSharedWorker)

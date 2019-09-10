@@ -7,7 +7,8 @@ const vstsURL = 'https://github.visualstudio.com/electron/_apis/build'
 
 const appVeyorJobs = {
   'electron-x64': 'electron-x64-release',
-  'electron-ia32': 'electron-ia32-release'
+  'electron-ia32': 'electron-ia32-release',
+  'electron-woa': 'electron-woa-release'
 }
 
 const circleCIJobs = [
@@ -21,8 +22,11 @@ const circleCIJobs = [
 
 const vstsArmJobs = [
   'electron-arm-testing',
-  'electron-arm64-testing'
+  'electron-arm64-testing',
+  'electron-woa-testing'
 ]
+
+let jobRequestedCount = 0
 
 async function makeRequest (requestOptions, parseResponse) {
   return new Promise((resolve, reject) => {
@@ -38,12 +42,12 @@ async function makeRequest (requestOptions, parseResponse) {
         console.error('Error occurred while requesting:', requestOptions.url)
         if (parseResponse) {
           try {
-            console.log('Error: ', `(status ${res.statusCode})`, err || JSON.parse(res.body), requestOptions)
+            console.log('Error: ', `(status ${res.statusCode})`, err || JSON.parse(res.body))
           } catch (err) {
-            console.log('Error: ', `(status ${res.statusCode})`, err || res.body, requestOptions)
+            console.log('Error: ', `(status ${res.statusCode})`, res.body)
           }
         } else {
-          console.log('Error: ', `(status ${res.statusCode})`, err || res.body, requestOptions)
+          console.log('Error: ', `(status ${res.statusCode})`, err || res.body)
         }
         reject(err)
       }
@@ -62,7 +66,7 @@ async function circleCIcall (buildUrl, targetBranch, job, options) {
   if (!options.ghRelease) {
     buildRequest.build_parameters.UPLOAD_TO_S3 = 1
   }
-
+  jobRequestedCount++
   const circleResponse = await makeRequest({
     method: 'POST',
     url: buildUrl,
@@ -113,6 +117,7 @@ async function callAppVeyor (targetBranch, job, options) {
     }),
     method: 'POST'
   }
+  jobRequestedCount++
   const appVeyorResponse = await makeRequest(requestOpts, true).catch(err => {
     console.log('Error calling AppVeyor:', err)
   })
@@ -141,7 +146,11 @@ async function buildVSTS (targetBranch, options) {
   }
 
   if (options.armTest) {
-    environmentVariables.CIRCLE_BUILD_NUM = options.circleBuildNum
+    if (options.circleBuildNum) {
+      environmentVariables.CIRCLE_BUILD_NUM = options.circleBuildNum
+    } else if (options.appveyorJobId) {
+      environmentVariables.APPVEYOR_JOB_ID = options.appveyorJobId
+    }
   } else {
     if (!options.ghRelease) {
       environmentVariables.UPLOAD_TO_S3 = 1
@@ -186,6 +195,7 @@ async function callVSTSBuild (build, targetBranch, environmentVariables) {
     body: JSON.stringify(buildBody),
     method: 'POST'
   }
+  jobRequestedCount++
   const vstsResponse = await makeRequest(requestOpts, true).catch(err => {
     console.log(`Error calling VSTS for job ${build.name}`, err)
   })
@@ -217,6 +227,7 @@ function runRelease (targetBranch, options) {
     buildAppVeyor(targetBranch, options)
     buildVSTS(targetBranch, options)
   }
+  console.log(`${jobRequestedCount} jobs were requested.`)
 }
 
 module.exports = runRelease
@@ -229,7 +240,7 @@ if (require.main === module) {
   if (args._.length < 1) {
     console.log(`Trigger CI to build release builds of electron.
     Usage: ci-release-build.js [--job=CI_JOB_NAME] [--ci=CircleCI|AppVeyor|VSTS]
-    [--ghRelease] [--armTest] [--circleBuildNum=xxx] TARGET_BRANCH
+    [--ghRelease] [--armTest] [--circleBuildNum=xxx] [--appveyorJobId=xxx] TARGET_BRANCH
     `)
     process.exit(0)
   }
