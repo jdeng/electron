@@ -62,7 +62,7 @@ DesktopCapturer::DesktopCapturer(v8::Isolate* isolate) {
   Init(isolate);
 }
 
-DesktopCapturer::~DesktopCapturer() {}
+DesktopCapturer::~DesktopCapturer() = default;
 
 void DesktopCapturer::StartHandling(bool capture_window,
                                     bool capture_screen,
@@ -90,18 +90,18 @@ void DesktopCapturer::StartHandling(bool capture_window,
     // Initialize the source list.
     // Apply the new thumbnail size and restart capture.
     if (capture_window) {
-      window_capturer_.reset(new NativeDesktopMediaList(
+      window_capturer_ = std::make_unique<NativeDesktopMediaList>(
           content::DesktopMediaID::TYPE_WINDOW,
-          content::desktop_capture::CreateWindowCapturer()));
+          content::desktop_capture::CreateWindowCapturer());
       window_capturer_->SetThumbnailSize(thumbnail_size);
       window_capturer_->AddObserver(this);
       window_capturer_->StartUpdating();
     }
 
     if (capture_screen) {
-      screen_capturer_.reset(new NativeDesktopMediaList(
+      screen_capturer_ = std::make_unique<NativeDesktopMediaList>(
           content::DesktopMediaID::TYPE_SCREEN,
-          content::desktop_capture::CreateScreenCapturer()));
+          content::desktop_capture::CreateScreenCapturer());
       screen_capturer_->SetThumbnailSize(thumbnail_size);
       screen_capturer_->AddObserver(this);
       screen_capturer_->StartUpdating();
@@ -144,6 +144,7 @@ void DesktopCapturer::UpdateSourcesList(DesktopMediaList* list) {
     }
     std::move(window_sources.begin(), window_sources.end(),
               std::back_inserter(captured_sources_));
+    window_capturer_.reset();
   }
 
   if (capture_screen_ &&
@@ -194,6 +195,7 @@ void DesktopCapturer::UpdateSourcesList(DesktopMediaList* list) {
     // individual screen support is added.
     std::move(screen_sources.begin(), screen_sources.end(),
               std::back_inserter(captured_sources_));
+    screen_capturer_.reset();
   }
 
   if (!capture_window_ && !capture_screen_)
