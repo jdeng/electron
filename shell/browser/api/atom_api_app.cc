@@ -554,7 +554,8 @@ void OnServeDataAvailable(const char* res,
       base::BindOnce(
           [](const char* res, uint32_t len, const char* body, uint32_t body_len,
              void* userdata) {
-            util::Promise* promise = reinterpret_cast<util::Promise*>(userdata);
+            auto* promise =
+                reinterpret_cast<util::Promise<mate::Dictionary>*>(userdata);
             if (len > 0) {
               v8::Isolate* isolate = v8::Isolate::GetCurrent();
               mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate);
@@ -1231,7 +1232,7 @@ v8::Local<v8::Promise> App::GetFileIcon(const base::FilePath& path,
 }
 
 v8::Local<v8::Promise> App::LocalServe(const std::string& req_obj) {
-  util::Promise* promise = new util::Promise(isolate());
+  auto* promise = new util::Promise<mate::Dictionary>(isolate());
   v8::Local<v8::Promise> handle = promise->GetHandle();
 
   auto* server = AtomBrowserMainParts::Get()->GetInProcServer();
