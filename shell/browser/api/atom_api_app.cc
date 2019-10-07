@@ -1251,6 +1251,25 @@ v8::Local<v8::Promise> App::LocalServe(const std::string& req_obj) {
   return handle;
 }
 
+v8::Local<v8::Promise> App::LoadInProcServer(const std::string& path) {
+  auto* promise = new util::Promise<mate::Dictionary>(isolate());
+  v8::Local<v8::Promise> handle = promise->GetHandle();
+
+  int ret =
+      AtomBrowserMainParts::Get()->LoadInProcServer(app_path_.Append(path));
+  if (ret < 0) {
+    promise->RejectWithErrorMessage("No server");
+    delete promise;
+    return handle;
+  }
+
+  mate::Dictionary dict = mate::Dictionary::CreateEmpty(isolate());
+  promise->Resolve(std::move(dict));
+
+  delete promise;
+  return handle;
+}
+
 std::vector<mate::Dictionary> App::GetAppMetrics(v8::Isolate* isolate) {
   std::vector<mate::Dictionary> result;
   result.reserve(app_metrics_.size());
@@ -1575,6 +1594,7 @@ void App::BuildPrototype(v8::Isolate* isolate,
                  &App::DisableDomainBlockingFor3DAPIs)
       .SetMethod("getFileIcon", &App::GetFileIcon)
       .SetMethod("localServe", &App::LocalServe)
+      .SetMethod("_loadServer", &App::LoadInProcServer)
       .SetMethod("getAppMetrics", &App::GetAppMetrics)
       .SetMethod("getGPUFeatureStatus", &App::GetGPUFeatureStatus)
       .SetMethod("getGPUInfo", &App::GetGPUInfo)

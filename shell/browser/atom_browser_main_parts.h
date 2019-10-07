@@ -107,6 +107,7 @@ class AtomBrowserMainParts : public content::BrowserMainParts {
 
   // Returns handle to the class responsible for fetching data
   InProcServer* GetInProcServer();
+  int LoadInProcServer(base::FilePath libpath);
 
   Browser* browser() { return browser_.get(); }
   BrowserProcessImpl* browser_process() { return fake_browser_process_.get(); }

@@ -112,8 +112,6 @@ void Erase(T* container, typename T::iterator iter) {
   container->erase(iter);
 }
 
-const char kInProcServer[] = "inproc-server";
-
 #if defined(OS_WIN)
 // gfx::Font callbacks
 void AdjustUIFont(gfx::win::FontAdjustment* font_adjustment) {
@@ -290,27 +288,6 @@ void AtomBrowserMainParts::PostEarlyInitialization() {
   // A workaround was previously needed because there was no ThreadTaskRunner
   // set.  If this check is failing we may need to re-add that workaround
   DCHECK(base::ThreadTaskRunnerHandle::IsSet());
-
-  // --inproc-server
-  auto* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(electron::kInProcServer)) {
-    auto libpath = command_line->GetSwitchValuePath(electron::kInProcServer);
-    if (!libpath.empty()) {
-      base::NativeLibraryLoadError error;
-      base::NativeLibrary server_lib = base::LoadNativeLibrary(libpath, &error);
-      if (server_lib != nullptr) {
-        std::unique_ptr<InProcServer> server{new InProcServer()};
-        if (server->Init(server_lib)) {
-          this->inproc_server_ = std::move(server);
-        } else {
-          LOG(ERROR) << "in proc server " << libpath << " invalid";
-          base::UnloadNativeLibrary(server_lib);
-        }
-      } else {
-        LOG(ERROR) << "in proc server " << libpath << " not found";
-      }
-    }
-  }
 
   // The ProxyResolverV8 has setup a complete V8 environment, in order to
   // avoid conflicts we only initialize our V8 environment after that.
@@ -582,6 +559,31 @@ AtomBrowserMainParts::GetGeolocationControl() {
       content::ServiceManagerConnection::GetForProcess()->GetConnector();
   connector->BindInterface(device::mojom::kServiceName, std::move(request));
   return geolocation_control_.get();
+}
+
+int AtomBrowserMainParts::LoadInProcServer(base::FilePath libpath) {
+  if (this->inproc_server_.get() != nullptr) {
+    LOG(ERROR) << "in proc server already loaded";
+    return 1;
+  }
+
+  base::NativeLibraryLoadError error;
+  base::NativeLibrary server_lib = base::LoadNativeLibrary(libpath, &error);
+  if (server_lib != nullptr) {
+    std::unique_ptr<InProcServer> server{new InProcServer()};
+    if (server->Init(server_lib)) {
+      this->inproc_server_ = std::move(server);
+    } else {
+      LOG(ERROR) << "in proc server " << libpath << " invalid";
+      base::UnloadNativeLibrary(server_lib);
+      return -2;
+    }
+  } else {
+    LOG(ERROR) << "in proc server " << libpath << " not found";
+    return -1;
+  }
+
+  return 0;
 }
 
 IconManager* AtomBrowserMainParts::GetIconManager() {
